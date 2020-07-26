@@ -1,4 +1,5 @@
 # sample-secret-management
+![Setup, Build, Publish and Deploy](https://github.com/stefanm8/sample-secret-management/workflows/Setup,%20Build,%20Publish%20and%20Deploy/badge.svg?branch=master)
 Example of managing secrets with sops, google kms, google iam and github actions
 
 ## Requirements
