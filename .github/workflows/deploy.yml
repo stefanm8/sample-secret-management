@@ -1,0 +1,66 @@
+name: Setup, Build, Publish and Deploy
+
+on: 
+  push:
+    branches:
+      - master
+
+# Environment variables available to all jobs and steps in this workflow
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_EMAIL: ${{ secrets.GCP_EMAIL }}
+  GITHUB_SHA: ${{ github.sha }}
+  IMAGE: sample-secret-management
+  GOOGLE_APPLICATION_CREDENTIALS: /tmp/github-account.json
+  REGISTRY_HOSTNAME: docker.io
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
+jobs:
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    # Setup gcloud CLI
+    - uses: GoogleCloudPlatform/github-actions/setup-gcloud@master
+      with:
+        version: '270.0.0'
+        service_account_email: ${{ secrets.GCP_EMAIL }}
+        service_account_key: ${{ secrets.GCP_KEY }}
+
+    # Download sops and install
+    - name: Setup sops
+      run: |
+        sudo wget https://github.com/mozilla/sops/releases/download/v3.6.0/sops-v3.6.0.linux -O sops
+        sudo chmod 0755 sops
+        sudo mv sops /bin
+        # Configure default gcp authentication
+        cat > /tmp/github-account.json <<EOL
+        ${{ secrets.GCP_KEY }}
+        EOL
+        gcloud config set project $GCP_PROJECT
+      
+    # Build the Docker image
+    - name: Build
+      run: |  
+        # Decrypt secrets
+        decrypted_secrets="$(sops --decrypt secrets/env.enc)"
+        # Parse decrypted env secrets into docker args format
+        build_args="$(for i in $decrypted_secrets;do echo --build-arg $i;done)"
+        # Building image and redirecting output to /dev/null to mask our secrets
+        docker build $build_args \
+          -t $REGISTRY_HOSTNAME/$DOCKER_USERNAME/$IMAGE:$GITHUB_SHA \
+          -t $REGISTRY_HOSTNAME/$DOCKER_USERNAME/$IMAGE:latest . > /dev/null
+
+    # Push the Docker image 
+    - name: Publish
+      run: |
+        docker login -u $DOCKER_USERNAME -p ${{ secrets.DOCKER_PASSWORD }}
+        docker push $REGISTRY_HOSTNAME/$DOCKER_USERNAME/$IMAGE
+
+    - name: Deploy
+      run: |
+        echo "your deploy code here"
